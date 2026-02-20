@@ -38,7 +38,7 @@ def send_telegram(message: str):
         requests.post(url, data=data, timeout=10)
         print(f"[Telegram] Sent: {message[:60]}...", flush=True)
     except Exception as e:
-        print(f"[Telegram] Error: {e}")
+        print(f"[Telegram] Error: {e}", flush=True)
 
 # ============================================================
 # BINANCE API — ดึง OHLCV
@@ -74,7 +74,7 @@ def get_ohlcv(symbol: str, interval: str, limit: int = 300, retries: int = 3) ->
             df["time"] = pd.to_datetime(df["time"], utc=True)
             df = df[["time", "open", "high", "low", "close", "volume"]].tail(limit).reset_index(drop=True)
 
-            print(f"[OHLCV] Got {len(df, flush=True)} bars from yfinance")
+            print(f"[OHLCV] Got {len(df)} bars from yfinance", flush=True)
             return df
 
         except Exception as e:
@@ -245,11 +245,11 @@ def main():
 
     while True:
         try:
-            print(f"[{datetime.now(timezone.utc, flush=True).strftime('%H:%M:%S')}] Checking {SYMBOL}...")
+            print(f"[{datetime.now(timezone.utc).strftime('%H:%M:%S')}] Checking {SYMBOL}...", flush=True)
             df     = get_ohlcv(SYMBOL, INTERVAL, limit=300)
             result = analyze(df)
 
-            print(f"  Price: {result['price']:,.2f} | Trend: {result['trend']} | BOS Bull: {result['bos_bull']} | BOS Bear: {result['bos_bear']} | Buy: {result['buy_signal']} | Sell: {result['sell_signal']}")
+            print(f"  Price: {result['price']:,.2f} | Trend: {result['trend']} | BOS Bull: {result['bos_bull']} | BOS Bear: {result['bos_bear']} | Buy: {result['buy_signal']} | Sell: {result['sell_signal']}", flush=True)
 
             # BOS Bull
             if result["bos_bull"] and not last_signal["bos_bull"]:
