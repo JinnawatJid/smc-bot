@@ -36,7 +36,7 @@ def send_telegram(message: str):
         url  = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
         data = {"chat_id": CHAT_ID, "text": message, "parse_mode": "HTML"}
         requests.post(url, data=data, timeout=10)
-        print(f"[Telegram] Sent: {message[:60]}...")
+        print(f"[Telegram] Sent: {message[:60]}...", flush=True)
     except Exception as e:
         print(f"[Telegram] Error: {e}")
 
@@ -74,11 +74,11 @@ def get_ohlcv(symbol: str, interval: str, limit: int = 300, retries: int = 3) ->
             df["time"] = pd.to_datetime(df["time"], utc=True)
             df = df[["time", "open", "high", "low", "close", "volume"]].tail(limit).reset_index(drop=True)
 
-            print(f"[OHLCV] Got {len(df)} bars from yfinance")
+            print(f"[OHLCV] Got {len(df, flush=True)} bars from yfinance")
             return df
 
         except Exception as e:
-            print(f"[OHLCV] Attempt {attempt}/{retries} failed: {e}")
+            print(f"[OHLCV] Attempt {attempt}/{retries} failed: {e}", flush=True)
             if attempt < retries:
                 time.sleep(5)
 
@@ -237,7 +237,7 @@ def build_message(signal_type: str, result: dict) -> str:
 # MAIN LOOP
 # ============================================================
 def main():
-    print(f"🚀 SMC Bot Started — {SYMBOL} {INTERVAL}")
+    print(f"🚀 SMC Bot Started — {SYMBOL} {INTERVAL}", flush=True)
     send_telegram(f"🚀 <b>SMC Bot เริ่มทำงานแล้ว!</b>\nSymbol: {SYMBOL}\nTimeframe: {INTERVAL}\nรอ Signal อยู่นะครับ...")
 
     # State — ป้องกันแจ้งเตือนซ้ำ
@@ -245,7 +245,7 @@ def main():
 
     while True:
         try:
-            print(f"[{datetime.now(timezone.utc).strftime('%H:%M:%S')}] Checking {SYMBOL}...")
+            print(f"[{datetime.now(timezone.utc, flush=True).strftime('%H:%M:%S')}] Checking {SYMBOL}...")
             df     = get_ohlcv(SYMBOL, INTERVAL, limit=300)
             result = analyze(df)
 
@@ -280,7 +280,7 @@ def main():
                 last_signal["sell"] = False
 
         except Exception as e:
-            print(f"[ERROR] {e}")
+            print(f"[ERROR] {e}", flush=True)
 
         time.sleep(CHECK_EVERY)
 
