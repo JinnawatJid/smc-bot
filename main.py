@@ -3,7 +3,7 @@ import time
 import requests
 import pandas as pd
 import numpy as np
-from datetime import datetime
+from datetime import datetime, timezone
 
 # ============================================================
 # CONFIG — ตั้งค่าผ่าน Environment Variables ใน Railway
@@ -85,6 +85,10 @@ def calc_pivot_low(df: pd.DataFrame, lookback: int) -> pd.Series:
 def analyze(df: pd.DataFrame) -> dict:
     """คำนวณ indicators ทั้งหมด แล้ว return signal"""
 
+    # ต้องมีข้อมูลเพียงพอก่อน
+    if len(df) < EMA_SLOW + 10:
+        raise ValueError(f"Not enough data: {len(df)} bars")
+
     # EMAs
     df["ema_fast"] = calc_ema(df["close"], EMA_FAST)
     df["ema_mid"]  = calc_ema(df["close"], EMA_MID)
@@ -99,33 +103,33 @@ def analyze(df: pd.DataFrame) -> dict:
     df["ph"] = calc_pivot_high(df, BOS_LOOKBACK)
     df["pl"] = calc_pivot_low(df, BOS_LOOKBACK)
 
-    # หา last valid pivot
-    last_ph = df["ph"].dropna().iloc[-1] if df["ph"].dropna().shape[0] > 0 else None
-    last_pl = df["pl"].dropna().iloc[-1] if df["pl"].dropna().shape[0] > 0 else None
+    # หา last valid pivot — ข้าม BOS_LOOKBACK แท่งท้ายสุดที่ยังไม่ confirm
+    ph_series = df["ph"].iloc[:-BOS_LOOKBACK].dropna()
+    pl_series = df["pl"].iloc[:-BOS_LOOKBACK].dropna()
 
-    prev_close = df["close"].iloc[-2]
-    curr_close = df["close"].iloc[-1]
+    last_ph = float(ph_series.iloc[-1]) if len(ph_series) > 0 else None
+    last_pl = float(pl_series.iloc[-1]) if len(pl_series) > 0 else None
+
+    prev_close = float(df["close"].iloc[-2])
+    curr_close = float(df["close"].iloc[-1])
 
     # BOS Detection
     bos_bull = (last_ph is not None) and (curr_close > last_ph) and (prev_close <= last_ph)
     bos_bear = (last_pl is not None) and (curr_close < last_pl) and (prev_close >= last_pl)
 
-    # Supply/Demand Zone (simplified — ใช้ recent pivot levels)
+    # Supply/Demand Zone
     supply_zone = last_ph
     demand_zone = last_pl
 
-    near_demand = demand_zone is not None and curr_close <= demand_zone * 1.005
-    near_supply = supply_zone is not None and curr_close >= supply_zone * 0.995
-
     # Signals
-    bull_candle = curr_close > df["open"].iloc[-1]
-    bear_candle = curr_close < df["open"].iloc[-1]
+    bull_candle = curr_close > float(df["open"].iloc[-1])
+    bear_candle = curr_close < float(df["open"].iloc[-1])
 
     buy_signal  = trend_up   and bos_bull and bull_candle
     sell_signal = trend_down and bos_bear and bear_candle
 
-    # SL / TP
-    atr = (df["high"] - df["low"]).rolling(14).mean().iloc[-1]
+    # SL / TP (ใช้ ATR)
+    atr = float((df["high"] - df["low"]).rolling(14).mean().iloc[-1])
     sl_dist = atr * 1.5
 
     sl_buy   = curr_close - sl_dist
@@ -215,7 +219,7 @@ def main():
 
     while True:
         try:
-            print(f"[{datetime.utcnow().strftime('%H:%M:%S')}] Checking {SYMBOL}...")
+            print(f"[{datetime.now(timezone.utc).strftime('%H:%M:%S')}] Checking {SYMBOL}...")
             df     = get_ohlcv(SYMBOL, INTERVAL, limit=300)
             result = analyze(df)
 
