@@ -1,10 +1,12 @@
 import os
 import time
+import threading
 import requests
 import pandas as pd
 import numpy as np
 import yfinance as yf
 from datetime import datetime, timezone
+from flask import Flask
 
 # ============================================================
 # CONFIG — ตั้งค่าผ่าน Environment Variables ใน Railway
@@ -283,4 +285,16 @@ def main():
         time.sleep(CHECK_EVERY)
 
 if __name__ == "__main__":
-    main()
+    # รัน Bot loop ใน background thread
+    bot_thread = threading.Thread(target=main, daemon=True)
+    bot_thread.start()
+
+    # Flask web server เพื่อ bind port ให้ Render
+    app = Flask(__name__)
+
+    @app.route("/")
+    def health():
+        return "SMC Bot is running ✅", 200
+
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port)
