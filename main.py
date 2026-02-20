@@ -3,6 +3,7 @@ import time
 import requests
 import pandas as pd
 import numpy as np
+import yfinance as yf
 from datetime import datetime, timezone
 
 # ============================================================
@@ -41,37 +42,38 @@ def send_telegram(message: str):
 # BINANCE API — ดึง OHLCV
 # ============================================================
 def get_ohlcv(symbol: str, interval: str, limit: int = 300, retries: int = 3) -> pd.DataFrame:
-    # Bybit interval map
-    interval_map = {"1m": "1", "3m": "3", "5m": "5", "15m": "15", "30m": "30", "1h": "60", "4h": "240", "1d": "D"}
-    bybit_interval = interval_map.get(interval, "5")
+    # yfinance interval map
+    interval_map = {"1m": "1m", "3m": "5m", "5m": "5m", "15m": "15m", "30m": "30m", "1h": "1h", "4h": "1h", "1d": "1d"}
+    yf_interval = interval_map.get(interval, "5m")
 
-    url    = "https://api.bybit.com/v5/market/kline"
-    params = {"category": "spot", "symbol": symbol, "interval": bybit_interval, "limit": limit}
+    # yfinance period ที่ดึงได้ต่อ interval
+    period_map = {"1m": "7d", "5m": "60d", "15m": "60d", "30m": "60d", "1h": "730d", "1d": "5y"}
+    yf_period = period_map.get(yf_interval, "60d")
+
+    # BTC symbol สำหรับ yfinance
+    yf_symbol = "BTC-USD" if "BTC" in symbol else symbol
 
     for attempt in range(1, retries + 1):
         try:
-            resp = requests.get(url, params=params, timeout=15)
-            resp.raise_for_status()
-            data = resp.json()
+            ticker = yf.Ticker(yf_symbol)
+            df = ticker.history(period=yf_period, interval=yf_interval)
 
-            if data.get("retCode") != 0:
-                raise ValueError(f"Bybit error: {data.get('retMsg')} (attempt {attempt})")
+            if df is None or len(df) == 0:
+                raise ValueError(f"Empty response from yfinance (attempt {attempt})")
 
-            rows = data["result"]["list"]
-            if not rows or len(rows) == 0:
-                raise ValueError(f"Empty response from Bybit (attempt {attempt})")
+            df = df.reset_index()
+            df.columns = [c.lower() for c in df.columns]
 
-            # Bybit คืนข้อมูลล่าสุดก่อน ต้อง reverse
-            rows = list(reversed(rows))
+            # rename ให้ตรงกับโค้ดเดิม
+            df = df.rename(columns={"datetime": "time", "date": "time"})
+            if "time" not in df.columns and "timestamp" in df.columns:
+                df = df.rename(columns={"timestamp": "time"})
 
-            df = pd.DataFrame(rows, columns=["open_time", "open", "high", "low", "close", "volume", "turnover"])
-            df["open"]  = df["open"].astype(float)
-            df["high"]  = df["high"].astype(float)
-            df["low"]   = df["low"].astype(float)
-            df["close"] = df["close"].astype(float)
-            df["volume"]= df["volume"].astype(float)
-            df["time"]  = pd.to_datetime(df["open_time"].astype(float), unit="ms")
-            return df.reset_index(drop=True)
+            df["time"] = pd.to_datetime(df["time"], utc=True)
+            df = df[["time", "open", "high", "low", "close", "volume"]].tail(limit).reset_index(drop=True)
+
+            print(f"[OHLCV] Got {len(df)} bars from yfinance")
+            return df
 
         except Exception as e:
             print(f"[OHLCV] Attempt {attempt}/{retries} failed: {e}")
