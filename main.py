@@ -40,23 +40,37 @@ def send_telegram(message: str):
 # ============================================================
 # BINANCE API — ดึง OHLCV
 # ============================================================
-def get_ohlcv(symbol: str, interval: str, limit: int = 300) -> pd.DataFrame:
+def get_ohlcv(symbol: str, interval: str, limit: int = 300, retries: int = 3) -> pd.DataFrame:
     url    = "https://api.binance.com/api/v3/klines"
     params = {"symbol": symbol, "interval": interval, "limit": limit}
-    resp   = requests.get(url, params=params, timeout=10)
-    data   = resp.json()
 
-    df = pd.DataFrame(data, columns=[
-        "open_time","open","high","low","close","volume",
-        "close_time","qav","num_trades","tbbav","tbqav","ignore"
-    ])
-    df["open"]  = df["open"].astype(float)
-    df["high"]  = df["high"].astype(float)
-    df["low"]   = df["low"].astype(float)
-    df["close"] = df["close"].astype(float)
-    df["volume"]= df["volume"].astype(float)
-    df["time"]  = pd.to_datetime(df["open_time"], unit="ms")
-    return df.reset_index(drop=True)
+    for attempt in range(1, retries + 1):
+        try:
+            resp = requests.get(url, params=params, timeout=15)
+            resp.raise_for_status()
+            data = resp.json()
+
+            if not isinstance(data, list) or len(data) == 0:
+                raise ValueError(f"Empty response from Binance (attempt {attempt})")
+
+            df = pd.DataFrame(data, columns=[
+                "open_time","open","high","low","close","volume",
+                "close_time","qav","num_trades","tbbav","tbqav","ignore"
+            ])
+            df["open"]  = df["open"].astype(float)
+            df["high"]  = df["high"].astype(float)
+            df["low"]   = df["low"].astype(float)
+            df["close"] = df["close"].astype(float)
+            df["volume"]= df["volume"].astype(float)
+            df["time"]  = pd.to_datetime(df["open_time"], unit="ms")
+            return df.reset_index(drop=True)
+
+        except Exception as e:
+            print(f"[OHLCV] Attempt {attempt}/{retries} failed: {e}")
+            if attempt < retries:
+                time.sleep(5)
+
+    raise RuntimeError(f"Failed to fetch OHLCV after {retries} attempts")
 
 # ============================================================
 # INDICATORS
