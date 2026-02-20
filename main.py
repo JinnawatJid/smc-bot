@@ -41,8 +41,12 @@ def send_telegram(message: str):
 # BINANCE API — ดึง OHLCV
 # ============================================================
 def get_ohlcv(symbol: str, interval: str, limit: int = 300, retries: int = 3) -> pd.DataFrame:
-    url    = "https://api.binance.com/api/v3/klines"
-    params = {"symbol": symbol, "interval": interval, "limit": limit}
+    # Bybit interval map
+    interval_map = {"1m": "1", "3m": "3", "5m": "5", "15m": "15", "30m": "30", "1h": "60", "4h": "240", "1d": "D"}
+    bybit_interval = interval_map.get(interval, "5")
+
+    url    = "https://api.bybit.com/v5/market/kline"
+    params = {"category": "spot", "symbol": symbol, "interval": bybit_interval, "limit": limit}
 
     for attempt in range(1, retries + 1):
         try:
@@ -50,19 +54,23 @@ def get_ohlcv(symbol: str, interval: str, limit: int = 300, retries: int = 3) ->
             resp.raise_for_status()
             data = resp.json()
 
-            if not isinstance(data, list) or len(data) == 0:
-                raise ValueError(f"Empty response from Binance (attempt {attempt})")
+            if data.get("retCode") != 0:
+                raise ValueError(f"Bybit error: {data.get('retMsg')} (attempt {attempt})")
 
-            df = pd.DataFrame(data, columns=[
-                "open_time","open","high","low","close","volume",
-                "close_time","qav","num_trades","tbbav","tbqav","ignore"
-            ])
+            rows = data["result"]["list"]
+            if not rows or len(rows) == 0:
+                raise ValueError(f"Empty response from Bybit (attempt {attempt})")
+
+            # Bybit คืนข้อมูลล่าสุดก่อน ต้อง reverse
+            rows = list(reversed(rows))
+
+            df = pd.DataFrame(rows, columns=["open_time", "open", "high", "low", "close", "volume", "turnover"])
             df["open"]  = df["open"].astype(float)
             df["high"]  = df["high"].astype(float)
             df["low"]   = df["low"].astype(float)
             df["close"] = df["close"].astype(float)
             df["volume"]= df["volume"].astype(float)
-            df["time"]  = pd.to_datetime(df["open_time"], unit="ms")
+            df["time"]  = pd.to_datetime(df["open_time"].astype(float), unit="ms")
             return df.reset_index(drop=True)
 
         except Exception as e:
